@@ -1,5 +1,6 @@
-require "./board.rb"
+require "./game.rb"
 require "./piece.rb"
+
 class HumanPlayer
 
   def initialize(board)

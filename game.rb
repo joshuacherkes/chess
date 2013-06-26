@@ -1,7 +1,7 @@
 # encoding: UTF-8
 require './piece.rb'
-require 'colored'
 require './human_player.rb'
+require 'colored'
 
 # chess_symbols = [white_chess_symbols, black_chess_symbols]
 class Game
@@ -112,7 +112,6 @@ class Game
   end
 
   def color_in(array) #also refactor
-    #debugger
     array.each_index do |row|
       array[row].each_with_index do |char,col|
         if (row+col) % 2 == 0
@@ -142,7 +141,6 @@ class Game
     private
 
     def populate_grid
-      #debugger
       @grid[1].each_index{|i| @grid[1][i] = Pawn.new(self, [1, i], :black)}
       @grid[6].each_index{|i| @grid[6][i] = Pawn.new(self, [6, i], :white)}
 

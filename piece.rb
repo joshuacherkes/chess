@@ -1,5 +1,5 @@
-require './board.rb'
-require 'debugger'
+require './game.rb'
+
 class Piece
   attr_accessor :pos, :color
 
