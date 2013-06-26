@@ -7,50 +7,27 @@ class Game
   attr_accessor :board
 
   def initialize
-    @board = [
-      [nil,nil,nil,nil,nil,nil,nil,nil],
-      [nil,nil,nil,nil,nil,nil,nil,nil],
-      [nil,nil,nil,nil,nil,nil,nil,nil],
-      [nil,nil,nil,nil,nil,nil,nil,nil],
-      [nil,nil,nil,nil,nil,nil,nil,nil],
-      [nil,nil,nil,nil,nil,nil,nil,nil],
-      [nil,nil,nil,nil,nil,nil,nil,nil],
-      [nil,nil,nil,nil,nil,nil,nil,nil]
-    ]
-    @pieces = []
+    @board = (0...8).map { [nil] * 8 }
     populate_board
     collect_pieces
   end
 
   def run
-    @player_1 = HumanPlayer.new(self, :white)
-    @player_2 = HumanPlayer.new(self, :black)
+    make_players
+    player = @player_1
 
     loop do
-      [@player_1, @player_2].each do |player|
-        display
+      display
+      break if game_end?(player)
+      puts "#{player.color.capitalize} to move."
 
-        if no_possible_moves?(player.color)
-          if in_check?(player.color)
-            puts "Oh snap, #{player.color} got checkmated!"
-          else
-            puts "Ha, you got a stalemate, whaaat."
-          return
-          end
-        end
+      try_turn(player)
 
-        puts "#{player.color.capitalize} to move."
-        begin
-          player.takes_turn
-        rescue StandardError => e
-          puts "#{e.message}"
-          retry
-        end
-      end
+      player = player == @player_1 ? @player_2 : @player_1
     end
+
+    put_results(player)
   end
-
-
 
   def occupied_by(square)
     @board[square[0]][square[1]]
@@ -66,17 +43,6 @@ class Game
     end
   end
 
-  def no_possible_moves?(color)
-    array = generate_all_squares
-     @pieces.each do |piece|
-       next unless piece.color == color
-       array.each do |square|
-         return false if piece.move_works?(square)
-       end
-     end
-     true
-  end
-
   def in_check?(color)
     king_pos = nil
     @pieces.each do |piece|
@@ -87,109 +53,115 @@ class Game
     end
   end
 
-  def display
-    array = write_chess_chars
-    array = color_in(array)
-    array = put_in_notation(array)
-
-    array.each {|row| puts row.join("")}
-  end
-
-
 
     private
+    def make_players
+      @player_1 = HumanPlayer.new(self, :white)
+      @player_2 = HumanPlayer.new(self, :black)
+    end
 
     def populate_board
+      corner = [Rook, Knight, Bishop]
+      middle = [Queen, King]
+      back_rank = corner + middle + corner.reverse
+
       @board[1].each_index{|i| @board[1][i] = Pawn.new(self, [1, i], :black)}
       @board[6].each_index{|i| @board[6][i] = Pawn.new(self, [6, i], :white)}
 
-      @board[0][0] = Rook.new(self, [0, 0], :black)
-      @board[0][7] = Rook.new(self, [0, 7], :black)
-      @board[7][0] = Rook.new(self, [7, 0], :white)
-      @board[7][7] = Rook.new(self, [7, 7], :white)
+      8.times do |i|
+        @board[0][i] = back_rank[i].new(self, [0, i], :black)
 
-      @board[0][1] = Knight.new(self, [0, 1], :black)
-      @board[0][6] = Knight.new(self, [0, 6], :black)
-      @board[7][1] = Knight.new(self, [7, 1], :white)
-      @board[7][6] = Knight.new(self, [7, 6], :white)
+      end
 
-      @board[0][2] = Bishop.new(self, [0, 2], :black)
-      @board[0][5] = Bishop.new(self, [0, 5], :black)
-      @board[7][2] = Bishop.new(self, [7, 2], :white)
-      @board[7][5] = Bishop.new(self, [7, 5], :white)
+      8.times do |i|
+        @board[7][i] = back_rank[i].new(self, [7, i], :white)
+      end
+    end
 
-      @board[0][3] = Queen.new(self, [0, 3], :black)
-      @board[7][3] = Queen.new(self, [7, 3], :white)
-
-      @board[0][4] = King.new(self, [0, 4], :black)
-      @board[7][4] = King.new(self, [7, 4], :white)
+    def display
+      put_in_notation(chess_chars).each { |row| puts row.join }
     end
 
     def put_in_notation(array)
-      array.each_index do |row|
-        array[row].unshift(8 - row)
-      end
-
+      array.each_index { |row| array[row].unshift(8 - row) }
       array.unshift([" "] + (" a ".." h ").to_a)
     end
 
-    def write_chess_chars
+    def generate_all_squares
       array = []
-      chess_chars = {
+      (0..7).each { |y| (0..7).each { |x| array << [y,x] } }
+      array
+    end
+
+    def chess_chars
+      array = (0...8).map { [nil] * 8 }
+
+      @board.each_index do |row|
+        @board[row].each_with_index do |piece,col|
+          if (row+col) % 2 == 0
+            array[row][col] = colorize(piece, "white")
+          else
+            array[row][col] = colorize(piece, "black")
+          end
+        end
+      end
+
+      array
+    end
+
+    def colorize(piece, background)
+      char_hash = {
         King => " ♔ ",
         Queen => " ♕ ",
         Rook => " ♖ ",
         Bishop => " ♗ ",
         Knight => " ♘ ",
-        Pawn => " ♙ "
+        Pawn => " ♙ ",
+        NilClass => "   "
       }
 
-      @board.each_with_index do |row, i|
-        array[i] = []
-        row.each do |piece|
-          array[i] << "   " && next unless piece
-          array[i] << chess_chars[piece.class]
-          end
-      end
-      array
-    end
-
-    def generate_all_squares
-      array = []
-      (0..7).each do |y|
-        (0..7).each do |x|
-          array << [y,x]
-        end
-      end
-      array
-    end
-
-    def color_in(array) #also refactor
-      array.each_index do |row|
-        array[row].each_with_index do |char,col|
-          if (row+col) % 2 == 0
-
-            if @board[row][col] == nil
-              array[row][col] = char.yellow_on_white
-            elsif @board[row][col].color == :white
-              array[row][col] = char.magenta_on_white
-            else
-              array[row][col] = char.blue_on_white
-            end
-
-          else
-
-            if @board[row][col] == nil
-              array[row][col] = char.yellow_on_black
-            elsif @board[row][col].color == :white
-              array[row][col] = char.magenta_on_black
-            else
-              array[row][col] = char.blue_on_black
-            end
-
-          end
-        end
+      if piece.nil? || piece.color == :white
+        char_hash[piece.class].send("magenta_on_#{background}".to_sym)
+      else
+        char_hash[piece.class].send("blue_on_#{background}".to_sym)
       end
     end
 
+    def game_end?(player)
+      no_possible_moves?(player)
+    end
+
+    def try_turn(player)
+      begin
+        player.takes_turn
+      rescue StandardError => e
+        puts "#{e.message}"
+        retry
+      end
+    end
+
+    def put_results(player)
+      if in_check?(player.color)
+        puts "Oh snap, #{player.color} got checkmated!"
+      else
+        puts "Ha, you got a stalemate, whaaat."
+      end
+    end
+
+    def no_possible_moves?(player)
+      array = generate_all_squares
+       @pieces.each do |piece|
+         next unless piece.color == player.color
+         array.each do |square|
+           return false if piece.move_works?(square)
+         end
+       end
+       true
+    end
+
+end
+
+if __FILE__ == $PROGRAM_NAME
+  game = Game.new
+  game.run
 end
