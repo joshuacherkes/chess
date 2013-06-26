@@ -1,82 +1,89 @@
+require 'debugger'
 require './game.rb'
 
 class Piece
   attr_accessor :pos, :color
 
-  def initialize(board, pos, color)
-    @board, @pos, @color = board, pos, color
+  def initialize(game, pos, color)
+    @game, @pos, @color = game, pos, color
   end
 
   def d_dup(array)
     array.inject([]) { |dup, el| dup << (el.is_a?(Array) ? d_dup(el) : el) }
   end
 
-  def move(dest)
-    if legal?(dest)
-      temp_grid, temp_pos  = d_dup(@board.grid), @pos.dup
-      @board.grid[@pos[0]][@pos[1]] = nil
-      @pos = dest
-      @board.grid[@pos[0]][@pos[1]] = self
-      @board.collect_pieces
+  def move_works?(dest)
 
-     # debugger
-      if @board.in_check?(self.color)
-        @board.grid = d_dup(temp_grid)
-        @pos = temp_pos.dup
-        @board.collect_pieces
-        raise "Your King would DIE!"
-      end
+    return false unless legal?(dest)
+    temp_board, temp_pos  = d_dup(@game.board), @pos.dup
+    do_move(dest)
+    works = !(@game.in_check?(@color))
+    undo_move(temp_board, temp_pos)
+    works
+  end
 
-      @board.collect_pieces
+  def undo_move(temp_board, temp_pos)
+    @game.board, @pos  = d_dup(temp_board), temp_pos.dup
+    @game.collect_pieces
+  end
 
-    else
-      raise "Not a Legal move, bro"
-    end
-
+  def do_move(dest)
+    @game.board[@pos[0]][@pos[1]] = nil
+    @pos = dest
+    @game.board[@pos[0]][@pos[1]] = self
+    @game.collect_pieces
   end
 
 
+  def move(dest)
+    raise "Not a legal move." unless move_works?(dest)
 
-  def orthog_clear?(dest) #NEED TO REFACTOR
-    #position = [4,4] dest = [7, 4] || [4, 1]
+    do_move(dest)
+  end
+
+
+    # test a move    #
+    # if legal?(dest)
+    #   temp_board, temp_pos  = d_dup(@game.board), @pos.dup
+    #   @game.board[@pos[0]][@pos[1]] = nil
+    #   @pos = dest
+    #   @game.board[@pos[0]][@pos[1]] = self
+    #   @game.collect_pieces
+    #   #do the move
+    #  # debugger
+    #   if @game.in_check?(@color)
+
+  #
+  #     end
+  #
+  #     @game.collect_pieces
+  #
+  #   else
+  #
+  #   end
+  #
+  # end
+
+
+
+  def orthog_clear?(dest)
     #debugger
-    axis = @pos[0] == dest[0] ? :x : :y
-    path = []
+    path = @pos[0] == dest[0] ? horizontal_path(dest) : vertical_path(dest)
 
-    case axis
-    when :x
-      if dest[1] - @pos[1] >= 0
-        (@pos[1]...dest[1]).each do |x|
-          next if x == @pos[1]
-          path << [@pos[0], x]
-        end
+    path.all?{ |square| @game.occupied_by(square).nil? }
+  end
 
-      else
-        #dest 7 6 pos 7 7
-        ((dest[1]+1)..@pos[1]).each do |x|
-          next if x == @pos[1] #(dest[1]+1)
-          path << [@pos[0], x]
-        end
-      end
+  def horizontal_path(dest)
+    left, right = [@pos, dest].sort
 
-    when :y
-      if dest[0] - @pos[0] >= 0
-        (@pos[0]...dest[0]).each do |y|
-          next if y == @pos[0]
-          path << [y, @pos[1]]
-        end
+    ((left[1]+1)...right[1]).map{ |x| [@pos[0], x] }
+  end
 
-      else
-        ((dest[0]+1)..@pos[0]).each do |y|
-          next if y == (dest[0]+1)
-          path << [y, @pos[1]]
-        end
-      end
-    end
+  def vertical_path(dest)
+    up, down = [@pos, dest].sort
 
-    #make path select the right squares
-    path.all?{ |square| @board.occupied_by(square).nil? }
-  end #method
+    ((up[0]+1)...down[0]).map{ |y| [y, @pos[1]] }
+  end
 
   def diag_clear?(dest) #NEED TO REFACTOR
     first, second = (dest[0] - @pos[0]), (dest[1] - @pos[1])
@@ -88,7 +95,7 @@ class Piece
         path << [@pos[0] + (i * shift[0]), @pos[1] + (i * shift[1])]
     end
 
-    path.all?{ |square| @board.occupied_by(square).nil? }
+    path.all?{ |square| @game.occupied_by(square).nil? }
   end #method
 
   def can_end?(square)
@@ -100,12 +107,12 @@ class Piece
   end
 
   def friendly?(square)
-    piece = @board.occupied_by(square)
+    piece = @game.occupied_by(square)
     piece && piece.color == @color
   end
 
   def enemy?(square)
-    piece = @board.occupied_by(square)
+    piece = @game.occupied_by(square)
     piece && piece.color != @color
   end
 end
@@ -128,7 +135,7 @@ class Knight < Piece
       @pos[1] - dest[1]
     ]
 
-    @@shifts.include?(diff) && can_end?(dest)
+    can_end?(dest) && @@shifts.include?(diff)
   end
 
 end
@@ -138,7 +145,7 @@ class Rook < Piece
   def legal?(dest)
     return unless @pos[0] == dest[0] || @pos[1] == dest[1]
 
-    orthog_clear?(dest) && can_end?(dest)
+    can_end?(dest) && orthog_clear?(dest)
   end
 
 end
@@ -148,7 +155,7 @@ class Bishop < Piece
   def legal?(dest)
     return unless (@pos[0] - dest[0]).abs == (@pos[1] - dest[1]).abs
 
-    diag_clear?(dest) && can_end?(dest)
+    can_end?(dest) && diag_clear?(dest)
   end
 
 end
@@ -161,7 +168,7 @@ class Queen < Piece
 
     return unless diag || orthog
 
-    diag ? diag_clear?(dest) : orthog_clear?(dest) && can_end?(dest)
+    can_end?(dest) && (diag ? diag_clear?(dest) : orthog_clear?(dest))
   end
 
 end
@@ -185,15 +192,15 @@ class King < Piece
       @pos[1] - dest[1]
     ]
 
-    @@shifts.include?(diff) && can_end?(dest)
+    can_end?(dest) && @@shifts.include?(diff)
   end
 
 end
 
 class Pawn < Piece
 
-  def initialize(board, pos, color)
-    super(board, pos, color)
+  def initialize(game, pos, color)
+    super(game, pos, color)
 
     @home_row = @color == :white ? 6 : 1
     @facing = @color == :white ? -1 : 1
@@ -209,15 +216,15 @@ class Pawn < Piece
 
   def can_move_to
     shifts = []
-    unless @board.occupied_by([@pos[0]+@facing, @pos[1]])
+    unless @game.occupied_by([@pos[0]+@facing, @pos[1]])
       shifts << [@facing, 0]
-      if @pos[0] == @home_row && !@board.occupied_by([@pos[0]+@facing * 2, @pos[1]])
+      if @pos[0] == @home_row && !@game.occupied_by([@pos[0]+@facing * 2, @pos[1]])
         shifts << [@facing * 2, 0]
       end
     end
 
     [-1,1].each do |x|
-      piece = @board.occupied_by([@pos[0]+@facing, @pos[1] + x])
+      piece = @game.occupied_by([@pos[0]+@facing, @pos[1] + x])
       next if piece.nil?
 
       shifts << [@facing, x] if piece.color != color
@@ -227,30 +234,3 @@ class Pawn < Piece
   end
 
 end
-
-=begin
-  knight: check 8 spaces relative to current pos;
-          select those that are on the board
-          and aren't occupied by own_color pieces
-
-  rook, bishop, queen: along {diagonal/orthogonal} lines,
-          recursively check if each square is occupied by
-          an enemy piece (then end and include that square),
-          if it is occupied by own_color piece
-          (then end but don't include), or if the square
-          is off the board (then end but don't include).
-
-  king:   check 8 spaces relative to current pos,
-          see if they are off the board / occupied by same color piece.
-
-  pawn:   check space in front; if empty, can move there. check two
-          spaces forward-diagonal; iff occupied by enemy piece, can
-          move there. if on starting pos, and space in front
-          is empty, and two spaces in front is empty, can move there.
-=end
-
-
-#illegal moves: if the pos after making an otherwise legal move
-  #would have your king in a pos where an enemy piece could move to
-  #that pos, that move is illegal.
-#if you have no legal moves, you are checkmated
